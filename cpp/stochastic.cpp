@@ -7,6 +7,7 @@
 #include "compartment.h"
 #include "lineages.h"
 #include "population.h"
+#include "immune.h"
 #include "random.h"
 #include "trace.h"
 #include <cassert>
@@ -25,10 +26,14 @@ void get_lineages_stat(ClineageSet &lineages,
     std::vector<TSI>& dtrace, std::vector<TL>& ttrace)
 {
     double T{ 0 };
+
+    auto cs = population.candidate_to_infect();
+    CImmuneStatus immune_status(population.get_size());
+    immune_status.set_immune(cs);
     CCompartment active_infected(population.get_size());
-    CCompartment passive_infected(population.get_size());
-    auto cs = population.first_speader();
     active_infected.add(cs);
+    //CCompartment passive_infected(population.get_size());
+
     auto A = lineages.add_new(population.get_spreadability(cs), 0, cs, 0);
     int I_active = 1, I_passive = 0;
     int N = population.get_size();
@@ -38,22 +43,25 @@ void get_lineages_stat(ClineageSet &lineages,
     r0 = (r0 + gamma - 1.0) / population.get_as0();
     double gamma_passive = gamma / (gamma - 1.);
     while (T < T_stop) {
-        double spread = r0 * A;
+        double spread = r0 * A + external_rate;
         double deactivate = gamma * I_active;
-        double recover = gamma_passive * I_passive;
-        double propensity = spread + deactivate + recover;
+        double propensity = spread + deactivate + gamma_passive * I_passive;
         if (propensity == 0)
             break;
-        propensity += external_rate;
         T -= log(stduniform()) / propensity;
         double rnd = stduniform() * propensity;
         if (rnd < spread) {
-            cs = population.next_speader();
-            if (cs == -1)
+            cs = population.candidate_to_infect();
+            if (immune_status.is_immune(cs))
                 continue;
+            immune_status.set_immune(cs);
             active_infected.add(cs);
-            A += lineages.add(population.get_spreadability(cs), fork_prop * I_active, A, T, cs);
-            //A += lineages.add(population.get_spreadability(cs), fork_prop, A, T, cs);
+            if (rnd < external_rate)
+                A += lineages.add_new(population.get_spreadability(cs), T, cs, 0);
+            else 
+                A += lineages.add(population.get_spreadability(cs), fork_prop * I_active, A, T, cs);
+                //A += lineages.add(population.get_spreadability(cs), fork_prop, A, T, cs);
+
             ++I_active;
             --S;
             //testing
@@ -61,32 +69,22 @@ void get_lineages_stat(ClineageSet &lineages,
                 ttrace.emplace_back(T, lineages.personl(cs));
 
         } else {
-            if ((rnd -= spread) < deactivate) {
+            if ( rnd < spread+deactivate) {
                 assert(I_active);
                 cs = active_infected.remove();
                 --I_active;
                 ++I_passive;
-                passive_infected.add(cs);
+                //passive_infected.add(cs);
                 A -= lineages.deactivate(population.get_spreadability(cs), cs);
                 if (I_active == 0)
                     A = 0;
 
-            } else if ((rnd -= deactivate) < recover) {
+            } else  {
                 assert(I_passive);
-                cs = passive_infected.remove();
-                lineages.recover(cs);
+                //cs = passive_infected.remove();
+                //lineages.recover(cs);
                 --I_passive;
-            } else {
-                cs = population.next_speader();
-                if (cs == -1)
-                    continue;
-                active_infected.add(cs);
-                A += lineages.add_new(population.get_spreadability(cs), T, cs, 0);
-                ++I_active;
-                --S;
-                if (stduniform() < test_prop)
-                    ttrace.emplace_back(T, lineages.personl(cs));
-            }
+            } 
         }
         dtrace.emplace_back(T, S, I_active + I_passive);
     }
@@ -100,9 +98,12 @@ void get_SIR_dynamics(double r0, double gamma, double T_stop, CPopulation& popul
     int I_active = 1, I_total = 1;
     int S = population.get_size() - I_active;
 
+    auto cs = population.candidate_to_infect();
+    CImmuneStatus immune_status(population.get_size());
+    immune_status.set_immune(cs);
     CCompartment infected(population.get_size());
-    auto cs = population.first_speader();
     infected.add(cs);
+
     auto A = population.get_spreadability(cs);
     trace.emplace_back(T, S, I_total);
     r0 = (r0 + gamma - 1.0) / population.get_as0();
@@ -111,9 +112,10 @@ void get_SIR_dynamics(double r0, double gamma, double T_stop, CPopulation& popul
         double propensity = spread + gamma * I_active;
         T -= log(stduniform()) / propensity;
         if (stduniform() * propensity < spread) {
-            cs = population.next_speader();
-            if (cs == -1)
+            cs = population.candidate_to_infect();
+            if (immune_status.is_immune(cs))
                 continue;
+            immune_status.set_immune(cs);
             infected.add(cs);
             A += population.get_spreadability(cs);
             ++I_active;
@@ -138,8 +140,8 @@ void get_SIR_dynamics(double r0, double gamma, double T_stop, CPopulation& popul
 
 /*
 Less stochastic but more simple and fast implementation.
-A person's spreadability exponetially declines in time.
-While in the implementation above, the expetation of 
+In the implementation below a person's spreadability exponetially declines in time.
+While in the implementation above, THE EXPECTATION of 
 a person's spreadability exponetially declines in time.
 */
 void get_SIR_dynamics2(double r0, double gamma, double T_stop, CPopulation& population, std::vector<TSI>& trace)
@@ -148,7 +150,9 @@ void get_SIR_dynamics2(double r0, double gamma, double T_stop, CPopulation& popu
     int I = 1;
     int S = population.get_size() - 1;
 
-    auto cs = population.first_speader();
+    auto cs = population.candidate_to_infect();
+    CImmuneStatus immune_status(population.get_size());
+    immune_status.set_immune(cs);
     auto A = population.get_spreadability(cs);
     trace.emplace_back(T, S, I);
     double tau = 1.0 / gamma;
@@ -165,8 +169,9 @@ void get_SIR_dynamics2(double r0, double gamma, double T_stop, CPopulation& popu
             if (dt < 0)  break;
             --I;
         }
-        cs = population.next_speader();
-        if (cs >-1){
+        cs = population.candidate_to_infect();
+        if (!immune_status.is_immune(cs)){
+            immune_status.set_immune(cs);
             A += population.get_spreadability(cs);
             ++I; --S;
         }
@@ -178,10 +183,63 @@ void get_SIR_dynamics2(double r0, double gamma, double T_stop, CPopulation& popu
     }
 };
 
+/*void get_SIR_dynamics3(double r0, double gamma, double T_stop, CPopulation& population, std::vector<TSI>& trace)
+{
+    double T{ 0 };
+    int I_active = 1, I_passive = 0;
+    int S = population.get_size() - I_active;
+
+    auto cs = population.candidate_to_infect();
+    CImmuneStatus immune_status(population.get_size());
+    immune_status.set_immune(cs);
+    CCompartment active_infected(population.get_size());
+    active_infected.add(cs);
+
+    auto A = population.get_spreadability(cs);
+    trace.emplace_back(T, S, I_active + I_passive);
+    r0 = (r0 + gamma - 1.0) / population.get_as0();
+    double gamma_passive = gamma / (gamma - 1.);
+    while (T < T_stop) {
+        double spread = r0 * A;
+        double deactivate = gamma * I_active;
+        double propensity = spread + deactivate + gamma_passive * I_passive;
+        if (propensity == 0)
+            break;
+        T -= log(stduniform()) / propensity;
+        double rnd = stduniform() * propensity;
+        if (rnd < spread) {
+            cs = population.candidate_to_infect();
+            if (immune_status.is_immune(cs))
+                continue;
+            immune_status.set_immune(cs);
+            active_infected.add(cs);
+            A += population.get_spreadability(cs);
+            ++I_active;
+            --S;
+        } else {
+            if (rnd < deactivate + spread) {
+                assert(I_active);
+                cs = active_infected.remove();
+                --I_active;
+                ++I_passive;
+                A -= population.get_spreadability(cs);
+                if (I_active == 0)
+                    A = 0;
+
+            } else  {
+                assert(I_passive);
+                --I_passive;
+            }
+        }
+        trace.emplace_back(T, S, I_active + I_passive);
+    }
+}; */
+
+
 
 void get_SIRS_dynamics(double r0, double gamma, double external_rate, double s_rate, double T_stop, CPopulation& population, std::vector<TSI>& trace)
 {
-    double T{ 0 }, T_recover{ 0 };
+    double T{ 0 };
     int I_active = 1, I_passive = 0, R=0;
     int S = population.get_size() - I_active;
 
@@ -189,7 +247,9 @@ void get_SIRS_dynamics(double r0, double gamma, double external_rate, double s_r
     CCompartment passive_infected(population.get_size());
     CCompartment recovered(population.get_size());
 
-    auto cs = population.first_speader();
+    auto cs = population.candidate_to_infect();
+    CImmuneStatus immune_status(population.get_size());
+    immune_status.set_immune(cs);
     active_infected.add(cs);
     auto A = population.get_spreadability(cs);
     trace.emplace_back(T, S, I_active+I_passive);
@@ -206,9 +266,10 @@ void get_SIRS_dynamics(double r0, double gamma, double external_rate, double s_r
         T -= log(stduniform()) / propensity;
         double rnd = stduniform() * propensity;
         if (rnd < spread) {
-            cs = population.next_speader();
-            if (cs == -1)
+            cs = population.candidate_to_infect();
+            if (immune_status.is_immune(cs))
                 continue;
+            immune_status.set_immune(cs);
             active_infected.add(cs);
             A += population.get_spreadability(cs);
             ++I_active;
@@ -230,7 +291,7 @@ void get_SIRS_dynamics(double r0, double gamma, double external_rate, double s_r
                 --I_passive;
                 ++R;
             } else  {
-                population.make_susceptible(recovered.remove());
+                immune_status.set_susceptible(recovered.remove());
                 --R;
                 ++S;
             } 

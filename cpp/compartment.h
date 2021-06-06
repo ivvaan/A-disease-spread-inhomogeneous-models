@@ -1,7 +1,7 @@
 #pragma once
 #include <climits>
 class CCompartment {
-    const unsigned int removed = UINT_MAX;
+    static const unsigned int removed = UINT_MAX;
 
 public:
     unsigned int size, n_removed;

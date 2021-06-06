@@ -1,11 +1,7 @@
 #include <cassert>
 #include "compartment.h"
 #include "random.h"
-
-#define MY_DEL_ARR(a) \
-    if (a)            \
-        delete[] a;   \
-    a = nullptr;
+#include "my_macros.h"
 
 CCompartment::CCompartment(unsigned int ps)
     : size{ 0 }
@@ -13,6 +9,8 @@ CCompartment::CCompartment(unsigned int ps)
  {
     members = new unsigned int[ps];
  };
+
+
 CCompartment::~CCompartment()
 {
     MY_DEL_ARR(members);

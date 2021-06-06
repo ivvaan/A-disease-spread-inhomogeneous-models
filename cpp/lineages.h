@@ -5,10 +5,7 @@
 #include <math.h>
 
 #include "random.h"
-#define MY_DEL_ARR(a) \
-    if (a)            \
-        delete[] a;   \
-    a = nullptr;
+#include "my_macros.h"
 
 struct Clineage {
 public:
@@ -77,12 +74,12 @@ class ClineageSet {
     class CReorder {
     public:
 
-        int nzN;
-        int* order;
+        unsigned int nzN;
+        unsigned int* order;
         CReorder(int ps)
             : nzN{ 0 }
         {
-            order = new int[ps];
+            order = new unsigned int[ps];
         }
         ~CReorder()
         {
@@ -101,7 +98,7 @@ public:
     double T_prev;
     Clineage* lineages;
     unsigned int* person_lineage;
-    ClineageSet(int ps)
+    ClineageSet(unsigned int ps)
         : N{ 1 }
         , T_prev{ 0 }
         , spawn_order(ps)
@@ -154,7 +151,7 @@ public:
     {
         new_prop *= T_prev - T; //negative!!!!!
         T_prev = T;
-        int lineage = spawn_order.select(A, lineages);
+        auto lineage = spawn_order.select(A, lineages);
         if (exp(new_prop) + stduniform() < 1.)
             return add_new(dA, T, cs, lineage);
         person_lineage[cs] = lineage;

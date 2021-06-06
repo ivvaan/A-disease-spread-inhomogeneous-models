@@ -9,8 +9,8 @@ unsigned int ClineageSet::CReorder::select(double A, Clineage* lineages)
         return o[0];
     double pA = lA;
     A -= lA;
-    for (int i = 1; i < nzN; ++i) {
-        int lineage = o[i];
+    for (unsigned int i = 1; i < nzN; ++i) {
+        unsigned int lineage = o[i];
         if (lineages[lineage].I_active == 0) {
             do {
                 lineage = o[--nzN];

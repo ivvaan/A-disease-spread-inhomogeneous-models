@@ -9,7 +9,7 @@ std::ostream& print_resampled(std::vector<TSI>& trace, double step, int n, std::
     auto prev = cur;
     for (++cur; cur != trace.end(); prev = cur++)
         for (int counter = 0; cur->T > T; T += step)
-            if ((counter++) % 10 == 0)
+            //if ((counter++) % 10 == 0)
                 prev->print_nt(n, T, os);
     return os;
 };

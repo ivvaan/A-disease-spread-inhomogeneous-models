@@ -10,8 +10,6 @@ std::default_random_engine drd_gen;
 #endif // NDEBUG
 
 
-
-
 double stduniform1()
 {
     static std::uniform_real_distribution<double> dist{ 0.0, 1.0 };
