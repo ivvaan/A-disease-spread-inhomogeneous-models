@@ -45,22 +45,22 @@ def HCS_SIR(r0_0,I0,τ,vs0,vb0):
 def HCS_SIR2(r0_0,I0,τ,vs0,vb0):
     '''
     Heterogeneous in Catching and Spreading
-    SIR model
+    SIR model splitted Infectious
     '''
     def M(mu,v):return np.exp(mu+0.5*v)
     def a_s(mus,C,vs):
         Cpvs=C+vs
         return M(mus,vs)*(1.0+Cpvs*(1.0+0.5*Cpvs))
     M0=M(0.0,vs0+vb0)
-    a_s0=r0_0*a_s(0.0,0.0,vs0)/(r0_0-1.0+1.0/τ)
-    α=r0_0/M0/a_s0
-    
+    r0=(r0_0-1.0+1.0/τ)
+    a_s0=a_s(0.0,0.0,vs0)
+    α=r0/M0/a_s0
+    γ_a=1/τ
+    γ_p=1/(1-τ)
     def ODE(y,t):
         S,I_a,I_p,A,mus,mub,C,vs,vb=y
         Cpvs=C+vs
         Cpvb=C+vb 
-        γ_a=1/τ
-        γ_p=1/(1-τ)
         minus_αMA=-α*M(mus+mub,Cpvs+Cpvb)*A
 
         dS = minus_αMA*S
@@ -74,8 +74,9 @@ def HCS_SIR2(r0_0,I0,τ,vs0,vb0):
         dvb = dmub*Cpvb
         return [dS, dI_a,dI_p,dA, dmus,dmub,dC,dvs,dvb]
     
-    A0=a_s0*I0
-    y0=[1.0-I0,I0,0.0,A0,0.0,0.0,0.0,vs0,vb0]
+    r_ratio=r0_0/r0
+    A0=a_s0*I0*r_ratio
+    y0=[1.0-I0,I0*r_ratio,I0*(1.0-r_ratio),A0,0.0,0.0,0.0,vs0,vb0]
     
     sol = odeint(ODE,y0, m_t).T
     S,I_a,I_p,A,mus,mub,C,vs,vb=sol
